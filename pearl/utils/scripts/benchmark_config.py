@@ -54,6 +54,9 @@ from pearl.policy_learners.sequential_decision_making.implicit_q_learning import
 from pearl.policy_learners.sequential_decision_making.ppo import (
     ProximalPolicyOptimization,
 )
+from pearl.policy_learners.sequential_decision_making.ppo_continuous import (
+    ContinuousProximalPolicyOptimization,
+)
 from pearl.policy_learners.sequential_decision_making.quantile_regression_deep_q_learning import (  # noqa E501
     QuantileRegressionDeepQLearning,
 )
@@ -378,6 +381,26 @@ PPO_dynamic_method = {
     "replay_buffer_args": {"capacity": 50000},
     "action_representation_module": OneHotActionTensorRepresentationModule,
     "action_representation_module_args": {},
+}
+PPO_continuous_method = {
+    "name": "ContinuousPPO",
+    "policy_learner": ContinuousProximalPolicyOptimization,
+    "policy_learner_args": {
+        "actor_hidden_dims": [256, 256],
+        "critic_hidden_dims": [256, 256],
+        "training_rounds": 1,
+        "batch_size": 256,
+        "entropy_autotune": False,
+        "entropy_coef": 0.25,
+        "critic_soft_update_tau": 0.005,
+        "actor_learning_rate": 3e-4,
+        "critic_learning_rate": 5e-4,
+        "actor_network_type": GaussianActorNetwork,
+        "critic_network_type": VanillaQValueNetwork,
+        "discount_factor": 0.99,
+    },
+    "replay_buffer": FIFOOffPolicyReplayBuffer,
+    "replay_buffer_args": {"capacity": 100000},
 }
 SAC_method = {
     "name": "SAC",
