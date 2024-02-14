@@ -54,6 +54,7 @@ class ProximalPolicyOptimization(ActorCriticBase):
         actor_network_type: Type[ActorNetwork] = VanillaActorNetwork,
         critic_network_type: Type[ValueNetwork] = VanillaValueNetwork,
         discount_factor: float = 0.99,
+        advantage_estimation_factor: float = 0.98,
         training_rounds: int = 100,
         batch_size: int = 128,
         epsilon: float = 0.0,
@@ -84,9 +85,23 @@ class ProximalPolicyOptimization(ActorCriticBase):
             on_policy=True,
             action_representation_module=action_representation_module,
         )
+        self._gamma = discount_factor
+        self._lambda = advantage_estimation_factor
         self._epsilon = epsilon
         self._entropy_bonus_scaling = entropy_bonus_scaling
         self._actor_old: nn.Module = copy.deepcopy(self._actor)
+
+    def _gae(self, reward, value, next_value, done, _lambda, _gamma, normalize=True) -> torch.Tensor:
+        batch_size, gae = len(reward), 0
+        advantages = []
+        for t in reversed(range(batch_size)):
+            delta = reward[t] + (_gamma * next_value[t] * (1 - done[t])) - value[t]
+            gae = delta + _gamma * _lambda * (1 - done[t]) * gae
+            advantages.append(gae)
+        advantages = torch.Tensor(advantages[::-1])
+        if normalize:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + self._epsilon)
+        return advantages
 
     def _actor_loss(self, batch: TransitionBatch) -> torch.Tensor:
         """
@@ -94,6 +109,8 @@ class ProximalPolicyOptimization(ActorCriticBase):
         """
         # TODO: change the output shape of value networks
         vs: torch.Tensor = self._critic(batch.state).view(-1)  # shape (batch_size)
+        next_vs: torch.Tensor = self._critic(batch.next_state).view(-1)  # shape (batch_size)
+
         action_probs = self._actor.get_action_prob(
             state_batch=batch.state,
             action_batch=batch.action,
@@ -119,9 +136,9 @@ class ProximalPolicyOptimization(ActorCriticBase):
         # A = sum(lambda^t*gamma^t*TD_error), while TD_error = reward + gamma * V(s+1) - V(s)
         # when lambda = 1 and gamma = 1
         # A = sum(TD_error) = return - V(s)
-        # TODO support lambda and gamma
         with torch.no_grad():
-            advantage = batch.cum_reward - vs  # shape (batch_size)
+            advantage = self._gae(batch.reward, vs, next_vs, batch.done.to(torch.int),
+                                  _lambda=self._lambda, _gamma=self._gamma, normalize=True)
 
         # entropy
         # Categorical is good for Cartpole Env where actions are discrete
